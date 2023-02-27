@@ -1,0 +1,2 @@
+work/injection2.o: injection2.c ../../../include/usertraps.h \
+ ../../../include/misc.h ../include/spawn.h
