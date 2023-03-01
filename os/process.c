@@ -239,8 +239,8 @@ void ProcessSchedule () {
   //disable intr
   //finding the Number of tickets doled out
   //calculating runtime
-
-  currentPCB->runtime += ClkGetCurJiffies() - currentPCB->lastjiffies ;
+timeelapsed = ClkGetCurJiffies() - currentPCB->lastjiffies;
+  currentPCB->runtime += timeelapsed ;
 
   if (currentPCB->pinfo){
     printf("CPUStats: Process %d has run for %d jiffies, priority = %d \n", GetCurrentPid(), currentPCB->runtime, currentPCB->pnice);
@@ -252,7 +252,7 @@ void ProcessSchedule () {
   }
 
   else{ 
-      timeelapsed = ClkGetCurJiffies() - currentPCB->lastjiffies;
+      
       if (timeelapsed < PROCESS_QUANTUM_JIFFIES){
           currentPCB->pnice = (currentPCB->pnice +1 > 19)? 19: currentPCB->pnice +1;
       }
@@ -261,7 +261,7 @@ void ProcessSchedule () {
       }
   }
   
-  
+
   if (AQueueEmpty(&runQueue)){
     if (!AQueueEmpty(&waitQueue)){
       currentPCB = idle;
