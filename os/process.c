@@ -243,15 +243,24 @@ void ProcessSchedule () {
   currentPCB->runtime += ClkGetCurJiffies() - currentPCB->lastjiffies ;
 
   if (currentPCB->pinfo){
-    printf("CPUStats: Process %d has run for %d jiffies, priority = %d", GetCurrentPID(), currentPCB->runtime, currentPCB->pnice);
+    printf("CPUStats: Process %d has run for %d jiffies, priority = %d \n", GetCurrentPid(), currentPCB->runtime, currentPCB->pnice);
   }
-  timeelapsed = ClkGetCurJiffies() - currentPCB->lastjiffies;
-  if (timeelapsed < PROCESS_QUANTUM_JIFFIES){
-      currentPCB->pnice = (currentPCB->pnice +1 > 19)? 19: currentPCB->pnice +1;
+
+
+  if (currentPCB->flags & PROCESS_STATUS_YIELD){
+      currentPCB->flags &= ~PROCESS_STATUS_YIELD;
   }
-  else if (timeelapsed > PROCESS_QUANTUM_JIFFIES){
-     currentPCB->pnice = (currentPCB->pnice  - 1 <=0 )? 1: currentPCB->pnice - 1;
+
+  else{ 
+      timeelapsed = ClkGetCurJiffies() - currentPCB->lastjiffies;
+      if (timeelapsed < PROCESS_QUANTUM_JIFFIES){
+          currentPCB->pnice = (currentPCB->pnice +1 > 19)? 19: currentPCB->pnice +1;
+      }
+      else if (timeelapsed > PROCESS_QUANTUM_JIFFIES){
+        currentPCB->pnice = (currentPCB->pnice  - 1 <=0 )? 1: currentPCB->pnice - 1;
+      }
   }
+  
   
   if (AQueueEmpty(&runQueue)){
     if (!AQueueEmpty(&waitQueue)){
@@ -259,6 +268,7 @@ void ProcessSchedule () {
       return;
     }
     else{
+      ClkStop();
       exitsim();
     }
    
@@ -1096,4 +1106,6 @@ void ProcessUserSleep(int seconds) {
 //-----------------------------------------------------
 void ProcessYield() {
   // Your code here
+  ProcessSetStatus (currentPCB,PROCESS_STATUS_YIELD);
+
 }
