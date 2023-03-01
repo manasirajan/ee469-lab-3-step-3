@@ -22,6 +22,8 @@
 // routines for context switches.
 PCB		*currentPCB;
 
+PCB * idle;
+
 // List of free PCBs.
 static Queue	freepcbs;
 
@@ -62,6 +64,7 @@ uint32 get_argument(char *string);
 //
 //----------------------------------------------------------------------
 void ProcessIdle() {
+  while(1);
 }
 
 
@@ -78,7 +81,7 @@ void ProcessIdle() {
 //----------------------------------------------------------------------
 void ProcessModuleInit () {
   int		i;
-
+ 
   dbprintf ('p', "ProcessModuleInit: function started\n");
   AQueueInit (&freepcbs);
   AQueueInit(&runQueue);
@@ -102,6 +105,8 @@ void ProcessModuleInit () {
   }
   // There are no processes running at this point, so currentPCB=NULL
   currentPCB = NULL;
+  idle = ProcessFork(ProcessIdle,0,0,0,"idle",0 ) + pcbs; //check 
+  ClkStart(); //check ------
   dbprintf ('p', "ProcessModuleInit: function complete\n");
 }
 
@@ -223,6 +228,7 @@ void ProcessSchedule () {
   int n = 0;
   Link * iter;
   PCB * pcb_iter;
+  int timeelapsed;
   
   // printf("proces schedule\n");
   // printf("length of run queue: %d\n", AQueueLength(&runQueue));
@@ -232,30 +238,62 @@ void ProcessSchedule () {
     
   //disable intr
   //finding the Number of tickets doled out
-  // printf("length of run queue: %d\n", AQueueLength(&runQueue));
-  iter = AQueueFirst(&runQueue);
-  for (j=0; j<AQueueLength(&runQueue);j++){
-    pcb_iter = (PCB *)AQueueObject(iter);
-    printf("pcb_iter->pnice: %d\n", pcb_iter->pnice);
-    n+= pcb_iter->pnice;
-    iter = AQueueNext(iter);
-  }
-  // printf("n: %d\n", n);
-  // printf("curpcb :%d\n", currentPCB);
+  //calculating runtime
 
-  rand_num = random() % n + 1;
- //finding the winner
-  iter = AQueueFirst(&runQueue);
-  for (j=0; j<AQueueLength (&runQueue);j++){
-    pcb_iter = (PCB *)AQueueObject(iter);
-    if(pcb_iter->pnice > rand_num){
-    //  pcb_iter->pnice-=1;
-      break;
-    }
-    rand_num-=pcb_iter->pnice;
-    iter = AQueueNext(iter);
+  currentPCB->runtime += ClkGetCurJiffies() - currentPCB->lastjiffies ;
+
+  if (currentPCB->pinfo){
+    printf("CPUStats: Process %d has run for %d jiffies, priority = %d", GetCurrentPID(), currentPCB->runtime, currentPCB->pnice);
   }
-  currentPCB = pcb_iter;
+  timeelapsed = ClkGetCurJiffies() - currentPCB->lastjiffies;
+  if (timeelapsed < PROCESS_QUANTUM_JIFFIES){
+      currentPCB->pnice = (currentPCB->pnice +1 > 19)? 19: currentPCB->pnice +1;
+  }
+  else if (timeelapsed > PROCESS_QUANTUM_JIFFIES){
+     currentPCB->pnice = (currentPCB->pnice  - 1 <=0 )? 1: currentPCB->pnice - 1;
+  }
+  
+  if (AQueueEmpty(&runQueue)){
+    if (!AQueueEmpty(&waitQueue)){
+      currentPCB = idle;
+      return;
+    }
+    else{
+      exitsim();
+    }
+   
+  }
+  
+
+  else {
+  //  printf("length of run queue: %d\n", AQueueLength(&runQueue));
+  // printf("length of wait queue: %d\n", AQueueLength(&waitQueue));
+    iter = AQueueFirst(&runQueue);
+    for (j=0; j<AQueueLength(&runQueue);j++){
+      pcb_iter = (PCB *)AQueueObject(iter);
+      //printf("pcb_iter->pnice: %d\n", pcb_iter->pnice);
+      n+= pcb_iter->pnice;
+      iter = AQueueNext(iter);
+    }
+    // printf("n: %d\n", n);
+    // printf("curpcb :%d\n", currentPCB);
+
+    rand_num = random() % n + 1;
+  //finding the winner
+    iter = AQueueFirst(&runQueue);
+    for (j=0; j<AQueueLength (&runQueue);j++){
+      pcb_iter = (PCB *)AQueueObject(iter);
+      if(pcb_iter->pnice >= rand_num){
+      //  pcb_iter->pnice-=1;
+        break;
+      }
+      rand_num-=pcb_iter->pnice;
+      iter = AQueueNext(iter);
+    }
+    currentPCB = pcb_iter;
+    // check
+    currentPCB->lastjiffies = ClkGetCurJiffies();
+  }
   // printf("curpcb :%d\n", currentPCB);
     
 
@@ -464,6 +502,8 @@ int ProcessFork (VoidFunc func, uint32 param, int pnice, int pinfo,char *name, i
   // This prevents someone else from grabbing this process
   ProcessSetStatus (pcb, PROCESS_STATUS_RUNNABLE);
 
+  //printf ("ProcessFork (%d): function started %s\n", pcb - pcbs, name);
+
   // At this point, the PCB is allocated and nobody else can get it.
   // However, it's not in the run queue, so it won't be run.  Thus, we
   // can turn on interrupts here.
@@ -484,7 +524,8 @@ int ProcessFork (VoidFunc func, uint32 param, int pnice, int pinfo,char *name, i
     pnice = 19;
   }
   pcb->pnice = pnice;
-
+ pcb->lastjiffies = ClkGetCurJiffies();
+ pcb->runtime = 0 ;
  
   //----------------------------------------------------------------------
   // This section initializes the memory for this process
@@ -628,17 +669,18 @@ int ProcessFork (VoidFunc func, uint32 param, int pnice, int pinfo,char *name, i
   }
 
   // Place PCB onto run queue
-  intrs = DisableIntrs ();
-  if ((pcb->l = AQueueAllocLink(pcb)) == NULL) {
-    printf("FATAL ERROR: could not get link for forked PCB in ProcessFork!\n");
-    exitsim();
+  if (func != ProcessIdle) {
+    intrs = DisableIntrs ();
+    if ((pcb->l = AQueueAllocLink(pcb)) == NULL) {
+      printf("FATAL ERROR: could not get link for forked PCB in ProcessFork!\n");
+      exitsim();
+    }
+    if (AQueueInsertLast(&runQueue, pcb->l) != QUEUE_SUCCESS) {
+      printf("FATAL ERROR: could not insert link into runQueue in ProcessFork!\n");
+      exitsim();
+    }
+    RestoreIntrs (intrs);
   }
-  if (AQueueInsertLast(&runQueue, pcb->l) != QUEUE_SUCCESS) {
-    printf("FATAL ERROR: could not insert link into runQueue in ProcessFork!\n");
-    exitsim();
-  }
-  RestoreIntrs (intrs);
-
   // If this is the first process, make it the current one
   if (currentPCB == NULL) {
     dbprintf ('p', "Setting currentPCB=0x%x, stackframe=0x%x\n", (int)pcb, (int)(pcb->currentSavedFrame));

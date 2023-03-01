@@ -21,6 +21,7 @@ main (int argc, char *argv[])
   switch(argc)
   {
     case 2:  
+      Printf("current id: %d\n", getpid());
       handle = shmget();
       db = (DB *)shmat(handle);
       if(db == NULL)
@@ -63,7 +64,7 @@ main (int argc, char *argv[])
       for(i = 0; !db->end; i ++)
       {
         for(j = 0; j < 50000; j++);     //waste some time
-        Printf("%c%d\n",'A'+offset, i);
+        //Printf("%c%d\n",'A'+offset, i);
         if(i > 200) sem_signal(spage);  //signal end
       }
       Printf("***** Process %d reached %d *****\n", getpid(), i);
@@ -93,4 +94,5 @@ main (int argc, char *argv[])
       Printf("argc = %d\n", argc);
       exit();
   }
+ // Printf("userprog4 done\n");
 }
