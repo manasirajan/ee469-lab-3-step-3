@@ -30,7 +30,7 @@
 #define	PROCESS_TYPE_SYSTEM	0x100
 #define	PROCESS_TYPE_USER	0x200
 
-#define	PROCESS_STATUS_YIELD	0x25
+#define	PROCESS_STATUS_YIELD	0x20
 
 typedef	void (*VoidFunc)();
 
